@@ -60,8 +60,7 @@ schemeListParser = do
 -- | The environment containing the runtime data.
 data SchemeEnvironment = SchemeEnvironment { heap :: Heap,
                                              hindex :: Integer,
-                                             bindings :: Bindings,
-                                             winding :: [Bindings] }
+                                             winding :: [Integer] }
                        deriving (Show)
 
 -- | A heap containing runtime data types.
@@ -77,7 +76,8 @@ data SchemeDatatype = SchemeHeapInteger Integer
                     | SchemeHeapChar Char
                     | SchemeHeapSymbol String
                     | SchemeHeapCons Integer Integer
-                    | SchemeLambda Bindings [String] SchemeToken
+                    | SchemeHeapEnvironment Bindings
+                    | SchemeLambda Integer [String] SchemeToken
                     deriving (Show)
 
 -- | The scheme runtime state monad.
@@ -86,12 +86,15 @@ type SchemeMonad a = State.State SchemeEnvironment a
 -- | Look up a symbol binding.
 lookupSymbol :: SchemeToken -> SchemeMonad SchemeDatatype
 lookupSymbol (SchemeSymbol s) = do
-  (Bindings b) <- gets bindings
   c <- gets winding
-  let r = Map.lookup s (Data.List.foldl1 Map.union (b : (Prelude.map (\(Bindings e) -> e) c)))
+  p <- mapM lookupHeap c
+  let r = Map.lookup s (Data.List.foldl1 Map.union $ (Prelude.map (\(SchemeHeapEnvironment (Bindings e)) -> e) $ p))
   case r of
    (Just r) -> lookupHeap r
-   Nothing -> error $ "Symbol " ++ s ++ "not found"
+   Nothing -> do
+     e <- get
+     error $ "Symbol " ++ s ++ "not found" ++ (show e)
+     
 lookupSymbol t = error $ (show t) ++ " is not a symbol"
 
 -- | Look up a heap pointer.
@@ -118,8 +121,7 @@ evalList (SchemeSyntaxTree (t : [])) = do
   c <- get
   if length w /= 0
     then do
-    put $ c { bindings = head w,
-              winding = tail w }
+    put $ c { winding = tail w }
     return r
     else return r
 evalList (SchemeSyntaxTree (t : ax)) = eval t >> evalList (SchemeSyntaxTree ax)
@@ -138,7 +140,8 @@ apply (SchemeSyntaxTree (fn : args)) = do
    (SchemeSymbol "lambda") -> do
      if length args >= 2
        then do
-       return $ SchemeLambda (Bindings $ fromList []) (makeFormalParams (args !! 0)) (SchemeSyntaxTree (tail args))
+       closure <- allocateEnvironment
+       return $ SchemeLambda closure (makeFormalParams (args !! 0)) (SchemeSyntaxTree (tail args))
        else error "Wrong number of arguments to lambda"
    (SchemeSymbol "add") -> do
      if length args >= 2
@@ -158,6 +161,16 @@ apply (SchemeSyntaxTree (fn : args)) = do
        
 apply _ = error "Not a function call"
 
+-- | Create a new environment on the heap
+allocateEnvironment :: SchemeMonad Integer
+allocateEnvironment = do
+  (Heap s) <- gets heap
+  i <- gets hindex
+  a <- get
+  put $ a { heap = Heap $ Map.insert i (SchemeHeapEnvironment $ Bindings $ fromList []) s,
+      hindex = 1 + i }
+  return i
+
 -- | Primitive addition.
 addition :: [SchemeDatatype] -> Integer
 addition [] = 0
@@ -167,12 +180,13 @@ addition _ = error "Not an integer in addition"
 -- | Primitive define.
 define :: SchemeToken -> SchemeDatatype -> SchemeMonad ()
 define (SchemeSymbol a) v = do
-  (Bindings b) <- gets bindings
+  (b : bx) <- gets winding
   (Heap h) <- gets heap
   d <- gets hindex
   t <- get
-  put $ t { bindings = Bindings $ Map.insert a d b,
-            heap = Heap $ Map.insert d v h,
+  (SchemeHeapEnvironment (Bindings n)) <- lookupHeap b
+  let e = SchemeHeapEnvironment $ Bindings $ Map.insert a d n
+  put $ t { heap = Heap $ Map.insert b e $ Map.insert d v h,
             hindex = (1 + d) }
     
 define a _ = error $ "Not a symbol: " ++ (show a)
@@ -192,12 +206,10 @@ bindFormalParams formals params = do
     else error "Wrong number of arguments to function"
 
 -- | Enter an environment.
-enter :: Bindings -> SchemeMonad ()
+enter :: Integer -> SchemeMonad ()
 enter bn = do
-  b <- gets bindings
   t <- gets winding
   a <- get 
-  put $ a { bindings = bn,
-            winding = b : t }
+  put $ a { winding = bn : t }
 
-example str = runState (evalList $ (\(Right a) -> a) $ parse schemeParser "" str) $ SchemeEnvironment (Heap $ fromList []) 1 (Bindings $ fromList []) []
+example str = runState (evalList $ (\(Right a) -> a) $ parse schemeParser "" str) $ SchemeEnvironment (Heap $ fromList [(1, SchemeHeapEnvironment $ Bindings $ fromList [])]) 2 [1]
