@@ -186,3 +186,14 @@ eval a = do
    (SchemeSymbol _) -> resolve s
    (SchemeInteger _) -> return a
    (SchemeCons a b) -> apply a b
+
+read' :: String -> SchemeMonad HeapPointer
+read' str = do
+  h <- gets runtimeHeap
+  let r = runParser schemeTopLevelParser h "" str
+  case r of
+   (Right (newHeap, e)) -> do
+     s <- get
+     put $ s { runtimeHeap = newHeap }
+     return e
+   (Left e) -> error $ "Parser error: " ++ (show e)
