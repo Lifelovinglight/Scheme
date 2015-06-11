@@ -177,7 +177,6 @@ eval SchemeNil = return $ SchemeNil
 eval a = do
   s <- dereference a
   case s of
-   (SchemeSymbol _) -> do
-     resolve s 
+   (SchemeSymbol _) -> resolve s
    (SchemeInteger _) -> return a
    (SchemeCons a b) -> apply a b
