@@ -7,209 +7,177 @@ import System.IO
 import Text.Parsec
 import Text.Parsec.String
 import Data.List
+import Data.Char
 
 -- | Any legal Scheme token.
-data SchemeToken = SchemeInteger Integer
-                 | SchemeChar Char
+data SchemeValue = SchemeInteger Integer
                  | SchemeSymbol String
-                 | SchemeSyntaxTree [SchemeToken]
-                   
-instance Show SchemeToken where
-  show (SchemeInteger n) = show n
-  show (SchemeChar c) = "#\\" ++ (:[]) c
-  show (SchemeSymbol str) = str
-  show (SchemeSyntaxTree ls) = "(" ++
-                         (concat . intersperse " " $ (Prelude.map show ls))
-                         ++ ")" 
+                 | SchemeCons HeapPointer HeapPointer
+                 deriving (Show, Eq)
+                          
+-- | A pointer to the heap.
+data HeapPointer = HeapPointer Integer
+                 | SchemeNil
+                 deriving (Show, Eq)
+                          
+instance Ord HeapPointer where
+  compare SchemeNil SchemeNil = EQ
+  compare SchemeNil b = LT
+  compare a SchemeNil = GT
+  compare (HeapPointer a) (HeapPointer b) = compare a b
+  
+-- | The type of a char parser w/ the scheme heap as user state.
+-- | Should return a pointer to the element parsed.
+type SchemeParser = Parsec String Heap HeapPointer
 
--- | Parser for scheme expressions.
-schemeParser :: Parser SchemeToken
+data Heap = Heap { heap :: Map HeapPointer SchemeValue,
+                   heapIndex :: HeapPointer }
+          deriving (Show)
+                   
+newHeap :: Heap
+newHeap = Heap (fromList []) (HeapPointer 0)
+
+addToHeap :: SchemeValue -> Heap -> Heap
+addToHeap v (Heap h o@(HeapPointer i)) = Heap (Map.insert o v h) (HeapPointer (1 + i))
+
+schemeParser :: SchemeParser
 schemeParser = try schemeIntegerParser <|>
                try schemeCharParser <|>
                try schemeSymbolParser <|>
-               schemeListParser
+               ((char '(') >> schemeListParser)
 
+-- | Parser for scheme S-expressions.
+schemeListParser :: SchemeParser
+schemeListParser = do
+  _ <- skipMany space
+  car <- try schemeIntegerParser <|>
+         try schemeCharParser <|>
+         try schemeSymbolParser <|>
+         try ((char '(') >> schemeListParser) <|>
+         schemeNilParser
+  case car of
+   SchemeNil -> return SchemeNil
+   (HeapPointer a) -> do
+     cdr <- try schemeListParser <|>
+            schemeNilParser
+     (Heap h i) <- getState
+     modifyState (addToHeap (SchemeCons car cdr))
+     return i
+
+-- | Parser for the end of a list.
+schemeNilParser :: SchemeParser
+schemeNilParser = (char ')') >> return SchemeNil
+               
 -- | Parser for scheme integers.
-schemeIntegerParser :: Parser SchemeToken
-schemeIntegerParser = skipMany space >>
-                      many1 digit >>=
-                      return . SchemeInteger . (read :: String -> Integer)
+schemeIntegerParser :: SchemeParser
+schemeIntegerParser = do
+  (Heap h i) <- getState
+  skipMany space
+  token <- many1 digit
+  modifyState $ (addToHeap $ SchemeInteger . (read :: String -> Integer) $ token)
+  return i
 
 -- | Parser for scheme chars.
-schemeCharParser :: Parser SchemeToken
-schemeCharParser = skipMany space >>
-                   string "#\\" >>
-                   letter >>=
-                   return . SchemeChar
+schemeCharParser :: SchemeParser
+schemeCharParser = do
+  (Heap h i) <- getState
+  skipMany space
+  string "#\\"
+  token <- letter
+  modifyState (addToHeap $ SchemeInteger . fromIntegral . ord $ token)
+  return i
 
 -- | Parser for scheme symbols.
-schemeSymbolParser :: Parser SchemeToken
-schemeSymbolParser = skipMany space >>
-                     many1 letter >>=
-                     return . SchemeSymbol
-
--- | Parser for S-expressions.
-schemeListParser :: Parser SchemeToken
-schemeListParser = do
+schemeSymbolParser :: SchemeParser
+schemeSymbolParser = do
+  (Heap h i) <- getState
   skipMany space
-  _ <- char '('
-  tokenList <- many schemeParser
-  _ <- char ')'
-  return $ SchemeSyntaxTree tokenList
+  token <- many1 letter
+  modifyState (addToHeap $ SchemeSymbol token)
+  return i
 
+schemeTopLevelParser :: Parsec String Heap (Heap, HeapPointer)
+schemeTopLevelParser = do
+  e <- schemeParser
+  t <- getState
+  return (t, e)
+  
 -- | The environment containing the runtime data.
-data SchemeEnvironment = SchemeEnvironment { heap :: Heap,
-                                             hindex :: Integer,
-                                             winding :: [Integer] }
+data SchemeEnvironment = SchemeEnvironment { runtimeHeap :: Heap,
+                                             winding :: [HeapPointer] }
                        deriving (Show)
-
--- | A heap containing runtime data types.
-newtype Heap = Heap (Map Integer SchemeDatatype)
-             deriving (Show)
-
--- | A map of bindings from symbols to pointers to the heap.
-newtype Bindings = Bindings (Map String Integer)
-                 deriving (Show)
-
--- | Runtime data types.
-data SchemeDatatype = SchemeHeapInteger Integer
-                    | SchemeHeapChar Char
-                    | SchemeHeapSymbol String
-                    | SchemeHeapCons Integer Integer
-                    | SchemeHeapEnvironment Bindings
-                    | SchemeLambda Integer [String] SchemeToken
-                    deriving (Show)
-
+                                
 -- | The scheme runtime state monad.
 type SchemeMonad a = State.State SchemeEnvironment a
 
--- | Look up a symbol binding.
-lookupSymbol :: SchemeToken -> SchemeMonad SchemeDatatype
-lookupSymbol (SchemeSymbol s) = do
-  c <- gets winding
-  p <- mapM lookupHeap c
-  let r = Map.lookup s (Data.List.foldl1 Map.union $ (Prelude.map (\(SchemeHeapEnvironment (Bindings e)) -> e) $ p))
-  case r of
-   (Just r) -> lookupHeap r
-   Nothing -> do
-     e <- get
-     error $ "Symbol " ++ s ++ "not found" ++ (show e)
-     
-lookupSymbol t = error $ (show t) ++ " is not a symbol"
+-- | Dereference a heap pointer.
+dereference :: HeapPointer -> SchemeMonad SchemeValue
+dereference SchemeNil = return $ SchemeSymbol "nil"
+dereference pointer = do
+  (Heap heap' _) <- gets runtimeHeap
+  let maybeAtom = Map.lookup pointer heap'
+  case maybeAtom of
+   Nothing -> error "Dangling pointer."
+   (Just atom) -> return atom
 
--- | Look up a heap pointer.
-lookupHeap :: Integer -> SchemeMonad SchemeDatatype
-lookupHeap n = do
-  (Heap t) <- gets heap
-  let r = Map.lookup n t
-  case r of
-   (Just r) -> return r
-   Nothing -> error $ "Dangling pointer at " ++ (show n)
-
--- | Evaluate scheme expressions.
-eval :: SchemeToken -> SchemeMonad SchemeDatatype
-eval (SchemeInteger n) = return $ SchemeHeapInteger n
-eval (SchemeChar c) = return $ SchemeHeapChar c
-eval t@(SchemeSymbol c) = lookupSymbol t
-eval t@(SchemeSyntaxTree _) = apply t
-
--- | Evaluate a "body" of expressions, returning the final one.
-evalList :: SchemeToken -> SchemeMonad SchemeDatatype
-evalList (SchemeSyntaxTree (t : [])) = do
-  r <- eval t
+-- | Make a closure the current environment.
+enterClosure :: HeapPointer -> SchemeMonad ()
+enterClosure closure = do
   w <- gets winding
-  c <- get
-  if length w /= 0
-    then do
-    put $ c { winding = tail w }
-    return r
-    else return r
-evalList (SchemeSyntaxTree (t : ax)) = eval t >> evalList (SchemeSyntaxTree ax)
+  s <- get
+  put $ s { winding = closure : w }
+
+-- | The "return" instruction, leave the current environment.
+leaveClosure :: SchemeMonad ()
+leaveClosure = do
+  w <- gets winding
+  s <- get
+  put $ s { winding = tail w }
 
 -- | Perform function application.
-apply :: SchemeToken -> SchemeMonad SchemeDatatype
-apply (SchemeSyntaxTree (fn : args)) = do
-  case fn of
-   (SchemeSymbol "define") -> do
-     if length args == 2
-       then do
-       r <- eval (args !! 1)
-       define (args !! 0) r
-       return $ SchemeHeapCons 0 0
-       else error "Wrong number of arguments to define"
-   (SchemeSymbol "lambda") -> do
-     if length args >= 2
-       then do
-       closure <- allocateEnvironment
-       return $ SchemeLambda closure (makeFormalParams (args !! 0)) (SchemeSyntaxTree (tail args))
-       else error "Wrong number of arguments to lambda"
-   (SchemeSymbol "add") -> do
-     if length args >= 2
-       then do
-       e <- mapM eval args
-       return $ SchemeHeapInteger $ addition e
-       else error "Wrong number of arguments to add"
-   otherwise -> do
-     n <- eval fn
-     case n of
-      (SchemeLambda environment formalParams ast) -> do
-        enter environment
-        v <- mapM eval args
-        bindFormalParams formalParams v
-        evalList ast
-      otherwise -> error $ (show n) ++ "is not a function" 
-       
-apply _ = error "Not a function call"
+apply :: HeapPointer -> HeapPointer -> SchemeMonad HeapPointer
+apply car' cdr' = do
+  carv <- dereference car'
+  case carv of
+   (SchemeSymbol "nil") -> error "Attempted to apply NIL."
+   --(SchemeSymbol "lambda") -> lambda cdr'
+   --(SchemeSymbol "define") -> define cdr'
+   (SchemeSymbol _) -> do
+     -- closure <- eval carv
+     return SchemeNil
 
--- | Create a new environment on the heap
-allocateEnvironment :: SchemeMonad Integer
-allocateEnvironment = do
-  (Heap s) <- gets heap
-  i <- gets hindex
-  a <- get
-  put $ a { heap = Heap $ Map.insert i (SchemeHeapEnvironment $ Bindings $ fromList []) s,
-      hindex = 1 + i }
-  return i
-
--- | Primitive addition.
-addition :: [SchemeDatatype] -> Integer
-addition [] = 0
-addition ((SchemeHeapInteger n) : nx) = n + addition nx
-addition _ = error "Not an integer in addition"
-
--- | Primitive define.
-define :: SchemeToken -> SchemeDatatype -> SchemeMonad ()
-define (SchemeSymbol a) v = do
-  (b : bx) <- gets winding
-  (Heap h) <- gets heap
-  d <- gets hindex
-  t <- get
-  (SchemeHeapEnvironment (Bindings n)) <- lookupHeap b
-  let e = SchemeHeapEnvironment $ Bindings $ Map.insert a d n
-  put $ t { heap = Heap $ Map.insert b e $ Map.insert d v h,
-            hindex = (1 + d) }
-    
-define a _ = error $ "Not a symbol: " ++ (show a)
-
--- | Verify list of formal parameters in lambda expressions.
-makeFormalParams :: SchemeToken -> [String]
-makeFormalParams (SchemeSyntaxTree []) = []
-makeFormalParams (SchemeSyntaxTree ((SchemeSymbol a) : ax)) = a : makeFormalParams (SchemeSyntaxTree ax)
-makeFormalParams _ = error "Error in formal parameter list"
-
--- | Bind formal parameters.
-bindFormalParams :: [String] -> [SchemeDatatype] -> SchemeMonad ()
-bindFormalParams formals params = do
-  if length formals == length params
-    then do
-    mapM_ (\(a, b) -> define (SchemeSymbol a) b) $ zip formals params
-    else error "Wrong number of arguments to function"
-
--- | Enter an environment.
-enter :: Integer -> SchemeMonad ()
-enter bn = do
-  t <- gets winding
-  a <- get 
-  put $ a { winding = bn : t }
-
-example str = runState (evalList $ (\(Right a) -> a) $ parse schemeParser "" str) $ SchemeEnvironment (Heap $ fromList [(1, SchemeHeapEnvironment $ Bindings $ fromList [])]) 2 [1]
+assoc :: SchemeValue -> HeapPointer -> SchemeMonad HeapPointer
+assoc val consp = do
+  (SchemeCons car cdr) <- dereference consp
+  (SchemeCons k v) <- dereference car
+  val2 <- dereference k
+  if val == val2
+    then return v
+    else if cdr == SchemeNil
+         then return SchemeNil
+         else assoc val cdr
+     
+resolve :: SchemeValue -> SchemeMonad HeapPointer
+resolve (SchemeSymbol "nil") = return SchemeNil
+resolve symbol@(SchemeSymbol _) = do
+  closures <- gets winding
+  resolve' symbol closures
+  where resolve' :: SchemeValue -> [HeapPointer] -> SchemeMonad HeapPointer
+        resolve symbol [] = error $ "Symbol not bound" ++ show symbol
+        resolve' symbol (w:windings) = do
+          (SchemeCons _ c1) <- dereference w -- (closure ..
+          (SchemeCons bindings c2) <- dereference c1 -- .. ((a . 1) ...) ...
+          res <- assoc symbol bindings
+          case res of
+           SchemeNil -> resolve' symbol windings
+           (HeapPointer _) -> return res
+  
+eval :: HeapPointer -> SchemeMonad HeapPointer
+eval SchemeNil = return $ SchemeNil
+eval a = do
+  s <- dereference a
+  case s of
+   (SchemeSymbol _) -> do
+     resolve s 
+   (SchemeInteger _) -> return a
+   (SchemeCons a b) -> apply a b
