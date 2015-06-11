@@ -134,13 +134,19 @@ leaveClosure = do
   s <- get
   put $ s { winding = tail w }
 
+-- | Construct a closure.
+lambda :: HeapPointer -> SchemeMonad HeapPointer
+lambda p = do
+  a <- dereference p
+  return p
+  
 -- | Perform function application.
 apply :: HeapPointer -> HeapPointer -> SchemeMonad HeapPointer
 apply car' cdr' = do
   carv <- dereference car'
   case carv of
    (SchemeSymbol "nil") -> error "Attempted to apply NIL."
-   --(SchemeSymbol "lambda") -> lambda cdr'
+   (SchemeSymbol "lamba") -> lambda cdr'
    --(SchemeSymbol "define") -> define cdr'
    (SchemeSymbol _) -> do
      -- closure <- eval carv
