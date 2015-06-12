@@ -3,10 +3,10 @@ module Scheme where
 
 import Data.Map as Map
 import Control.Monad.State as State
-import System.IO
+-- import System.IO
 import Text.Parsec
-import Text.Parsec.String
-import Data.List
+-- import Text.Parsec.String
+-- import Data.List
 import Data.Char
 
 -- | Any legal Scheme token.
@@ -134,11 +134,25 @@ leaveClosure = do
   s <- get
   put $ s { winding = tail w }
 
+car :: HeapPointer -> SchemeMonad HeapPointer
+car e = do
+  c <- dereference e
+  case c of
+   (SchemeCons p _) -> return p
+   otherwise -> error "Car applied to non-cons: " ++ (show c)
+   
+cdr :: HeapPointer -> SchemeMonad HeapPointer
+cdr e = do
+  c <- dereference e
+  case c of
+   (SchemeCons _ p) -> return p
+   otherwise -> error "Cdr applied to non-cons: " ++ (show c)
+
 -- | Construct a closure.
 lambda :: HeapPointer -> SchemeMonad HeapPointer
 lambda p = do
   a <- dereference p
-  return p
+  verifyFormals a
   
 -- | Perform function application.
 apply :: HeapPointer -> HeapPointer -> SchemeMonad HeapPointer
@@ -152,20 +166,21 @@ apply car' cdr' = do
      -- closure <- eval carv
      return SchemeNil
 
-assoc :: SchemeValue -> HeapPointer -> SchemeMonad HeapPointer
-assoc val consp = do
-  (SchemeCons car cdr) <- dereference consp
-  (SchemeCons k v) <- dereference car
-  val2 <- dereference k
-  if val == val2
-    then return v
-    else if cdr == SchemeNil
-         then return SchemeNil
-         else assoc val cdr
+-- | Looks up a value in an association list.
+assoc :: HeapPointer -> HeapPointer -> SchemeMonad HeapPointer
+assoc valp consp = do
+  assocPair <- car consp
+  k <- car assocPair
+  if valp == k
+    then cdr assocPair
+    else do
+    nextPair <- cdr consp
+    if nextPair == SchemeNil
+      then return SchemeNil
+      else assoc valp nextPair
      
-resolve :: SchemeValue -> SchemeMonad HeapPointer
-resolve (SchemeSymbol "nil") = return SchemeNil
-resolve symbol@(SchemeSymbol _) = do
+resolve :: HeapPointer -> SchemeMonad HeapPointer
+resolve sp = do
   closures <- gets winding
   resolve' symbol closures
   where resolve' :: SchemeValue -> [HeapPointer] -> SchemeMonad HeapPointer
@@ -184,8 +199,10 @@ eval a = do
   s <- dereference a
   case s of
    (SchemeSymbol _) -> resolve s
-   (SchemeInteger _) -> return a
-   (SchemeCons a b) -> apply a b
+   (SchemeInteger _) -> return s
+   (SchemeCons _ _) -> apply s
+
+analyze :: HeapPointer -> 
 
 read' :: String -> SchemeMonad HeapPointer
 read' str = do
