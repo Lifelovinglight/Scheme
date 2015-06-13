@@ -1,4 +1,4 @@
--- A simple non-standard scheme implementation.
+-- | A simple non-standard scheme implementation.
 module Scheme where
 
 import Data.Map as Map
@@ -38,7 +38,8 @@ newHeap :: Heap
 newHeap = Heap (fromList []) (HeapPointer 0)
 
 addToHeap :: SchemeValue -> Heap -> Heap
-addToHeap v (Heap h o@(HeapPointer i)) = Heap (Map.insert o v h) (HeapPointer (1 + i))
+addToHeap v (Heap h o@(HeapPointer i)) =
+  Heap (Map.insert o v h) (HeapPointer (1 + i))
 
 schemeParser :: SchemeParser
 schemeParser = try schemeIntegerParser <|>
@@ -74,7 +75,8 @@ schemeIntegerParser = do
   (Heap h i) <- getState
   skipMany space
   token <- many1 digit
-  modifyState $ (addToHeap $ SchemeInteger . (read :: String -> Integer) $ token)
+  modifyState $ (addToHeap $ SchemeInteger . (read :: String -> Integer) $
+                 token)
   return i
 
 -- | Parser for scheme chars.
@@ -115,7 +117,8 @@ allocSchemeAtomic :: SchemeValue -> SchemeMonad HeapPointer
 allocSchemeAtomic val = do
   (Heap heap' index'@(HeapPointer indexVal)) <- gets runtimeHeap
   state' <- get
-  put $ state' { runtimeHeap = Heap (Map.insert index' val heap') (HeapPointer $ indexVal + 1) }
+  put $ state' { runtimeHeap = Heap (Map.insert index' val heap')
+                               (HeapPointer $ indexVal + 1) }
   return index'
 
 -- | Dereference a heap pointer.
