@@ -134,14 +134,18 @@ leaveClosure = do
   s <- get
   put $ s { winding = tail w }
 
-car :: HeapPointer -> SchemeMonad HeapPointer
+-- | A function with this type can be used as a scheme primitive function
+-- | by apply.
+type SchemePrimitive = HeapPointer -> SchemeMonad HeapPointer
+
+car :: SchemePrimitive
 car e = do
   c <- dereference e
   case c of
    (SchemeCons p _) -> return p
    otherwise -> error "Car applied to non-cons: " ++ (show c)
    
-cdr :: HeapPointer -> SchemeMonad HeapPointer
+cdr :: SchemePrimitive
 cdr e = do
   c <- dereference e
   case c of
@@ -149,25 +153,27 @@ cdr e = do
    otherwise -> error "Cdr applied to non-cons: " ++ (show c)
 
 -- | Construct a closure.
-lambda :: HeapPointer -> SchemeMonad HeapPointer
+lambda :: SchemePrimitive
 lambda p = do
-  a <- dereference p
-  verifyFormals a
+  -- a <- dereference p
+  -- verifyFormals a
+  return SchemeNil
   
 -- | Perform function application.
-apply :: HeapPointer -> HeapPointer -> SchemeMonad HeapPointer
-apply car' cdr' = do
-  carv <- dereference car'
-  case carv of
+apply :: SchemePrimitive
+apply codep = do
+  funp <- car codep
+  fun <- dereference funp
+  case fun of
    (SchemeSymbol "nil") -> error "Attempted to apply NIL."
-   (SchemeSymbol "lamba") -> lambda cdr'
+   (SchemeSymbol "lamba") -> lambda 
    --(SchemeSymbol "define") -> define cdr'
    (SchemeSymbol _) -> do
      -- closure <- eval carv
      return SchemeNil
 
 -- | Looks up a value in an association list.
-assoc :: HeapPointer -> HeapPointer -> SchemeMonad HeapPointer
+assoc :: SchemePrimitive
 assoc valp consp = do
   assocPair <- car consp
   k <- car assocPair
@@ -179,8 +185,8 @@ assoc valp consp = do
       then return SchemeNil
       else assoc valp nextPair
      
-resolve :: HeapPointer -> SchemeMonad HeapPointer
-resolve sp = do
+resolve :: SchemePrimitive
+resolve symbol = do
   closures <- gets winding
   resolve' symbol closures
   where resolve' :: SchemeValue -> [HeapPointer] -> SchemeMonad HeapPointer
@@ -193,16 +199,14 @@ resolve sp = do
            SchemeNil -> resolve' symbol windings
            (HeapPointer _) -> return res
   
-eval :: HeapPointer -> SchemeMonad HeapPointer
+eval :: SchemePrimitive
 eval SchemeNil = return $ SchemeNil
 eval a = do
   s <- dereference a
   case s of
    (SchemeSymbol _) -> resolve s
-   (SchemeInteger _) -> return s
+   (SchemeInteger _) -> return a
    (SchemeCons _ _) -> apply s
-
-analyze :: HeapPointer -> 
 
 read' :: String -> SchemeMonad HeapPointer
 read' str = do
