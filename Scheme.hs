@@ -104,7 +104,7 @@ schemeTopLevelParser = do
   
 -- | The environment containing the runtime data.
 data SchemeEnvironment = SchemeEnvironment { runtimeHeap :: Heap,
-                                             winding :: [HeapPointer] }
+                                             environment :: HeapPointer }
                        deriving (Show)
                                 
 -- | The scheme runtime state monad.
@@ -113,9 +113,9 @@ type SchemeMonad a = State.State SchemeEnvironment a
 -- | Allocate an atomic value on the heap.
 allocSchemeAtomic :: SchemeValue -> SchemeMonad HeapPointer
 allocSchemeAtomic val = do
-  (Heap heap' index') <- gets runtimeHeap
+  (Heap heap' index'@(HeapPointer indexVal)) <- gets runtimeHeap
   state' <- get
-  put $ state' { runtimeHeap = Heap (Map.insert val heap') (index' + 1) }
+  put $ state' { runtimeHeap = Heap (Map.insert index' val heap') (HeapPointer $ indexVal + 1) }
   return index'
 
 -- | Dereference a heap pointer.
@@ -127,62 +127,52 @@ dereference pointer = do
   case maybeAtom of
    Nothing -> error "Dangling pointer."
    (Just atom) -> return atom
-
--- | Make a closure the current environment.
-enterClosure :: HeapPointer -> SchemeMonad ()
-enterClosure closure = do
-  w <- gets winding
-  s <- get
-  put $ s { winding = closure : w }
-
--- | The "return" instruction, leave the current environment.
-leaveClosure :: SchemeMonad ()
-leaveClosure = do
-  w <- gets winding
-  s <- get
-  put $ s { winding = tail w }
-
+   
 -- | A function with this type can be used as a scheme primitive function
 -- | by apply.
 type SchemePrimitive = HeapPointer -> SchemeMonad HeapPointer
 
 -- | Allocate a cons on the heap
+primitiveCons :: HeapPointer -> HeapPointer -> SchemeMonad HeapPointer
+primitiveCons carp cdrp = do
+  allocSchemeAtomic $ SchemeCons carp cdrp
+
 cons :: SchemePrimitive
 cons argp = do
-  car' <- car argp
-  cdr' <- (car >>= cdr) argp
-  allocSchemeAtomic $ SchemeCons car' cdr'
+  carp <- car argp
+  cdrp <- (\argp -> car argp >>= cdr) argp
+  primitiveCons carp cdrp
   
 car :: SchemePrimitive
 car e = do
   c <- dereference e
   case c of
    (SchemeCons p _) -> return p
-   otherwise -> error "Car applied to non-cons: " ++ (show c)
+   otherwise -> error $ "Car applied to non-cons: " ++ (show c)
    
 cdr :: SchemePrimitive
 cdr e = do
   c <- dereference e
   case c of
    (SchemeCons _ p) -> return p
-   otherwise -> error "Cdr applied to non-cons: " ++ (show c)
+   otherwise -> error $ "Cdr applied to non-cons: " ++ (show c)
 
 -- | Construct a closure.
 lambda :: SchemePrimitive
 lambda argp = do
   formalArguments <- car argp
   functionBody <- cdr argp
-  (env:_) <- gets winding
-  cons formalArguments functionBody >>= cons env
+  env <- gets environment
+  primitiveCons formalArguments functionBody >>= primitiveCons env
   
 -- | Perform function application.
 apply :: SchemePrimitive
-apply codep = do
-  funp <- car codep
+apply argp = do
+  funp <- car argp
   fun <- dereference funp
   case fun of
    (SchemeSymbol "nil") -> error "Attempted to apply NIL."
-   (SchemeSymbol "lamba") -> lambda 
+   (SchemeSymbol "lamba") -> lambda funp
    --(SchemeSymbol "define") -> define cdr'
    (SchemeSymbol _) -> do
      -- closure <- eval carv
@@ -201,30 +191,25 @@ assoc argp = do
     nextPair <- cdr consp
     if nextPair == SchemeNil
       then return SchemeNil
-      else assoc valp nextPair
+      else assoc nextPair
      
 resolve :: SchemePrimitive
-resolve symbol = do
-  closures <- gets winding
-  resolve' symbol closures
-  where resolve' :: SchemeValue -> [HeapPointer] -> SchemeMonad HeapPointer
-        resolve symbol [] = error $ "Symbol not bound" ++ show symbol
-        resolve' symbol (w:windings) = do
-          (SchemeCons _ c1) <- dereference w -- (closure ..
-          (SchemeCons bindings c2) <- dereference c1 -- .. ((a . 1) ...) ...
-          res <- assoc symbol bindings
-          case res of
-           SchemeNil -> resolve' symbol windings
-           (HeapPointer _) -> return res
-  
+resolve argp = do
+  env <- gets environment
+  res <- assoc env
+  val <- dereference res
+  case res of
+   SchemeNil -> error $ "Unbound symbol: " ++ (show res)
+   otherwise -> return res
+   
 eval :: SchemePrimitive
 eval SchemeNil = return $ SchemeNil
 eval a = do
   s <- dereference a
   case s of
-   (SchemeSymbol _) -> resolve s
+   (SchemeSymbol _) -> resolve a
    (SchemeInteger _) -> return a
-   (SchemeCons _ _) -> apply s
+   (SchemeCons _ _) -> apply a
 
 read' :: String -> SchemeMonad HeapPointer
 read' str = do
