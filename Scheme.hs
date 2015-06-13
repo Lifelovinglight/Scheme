@@ -110,6 +110,14 @@ data SchemeEnvironment = SchemeEnvironment { runtimeHeap :: Heap,
 -- | The scheme runtime state monad.
 type SchemeMonad a = State.State SchemeEnvironment a
 
+-- | Allocate an atomic value on the heap.
+allocSchemeAtomic :: SchemeValue -> SchemeMonad HeapPointer
+allocSchemeAtomic val = do
+  (Heap heap' index') <- gets runtimeHeap
+  state' <- get
+  put $ state' { runtimeHeap = Heap (Map.insert val heap') (index' + 1) }
+  return index'
+
 -- | Dereference a heap pointer.
 dereference :: HeapPointer -> SchemeMonad SchemeValue
 dereference SchemeNil = return $ SchemeSymbol "nil"
@@ -138,6 +146,13 @@ leaveClosure = do
 -- | by apply.
 type SchemePrimitive = HeapPointer -> SchemeMonad HeapPointer
 
+-- | Allocate a cons on the heap
+cons :: SchemePrimitive
+cons argp = do
+  car' <- car argp
+  cdr' <- (car >>= cdr) argp
+  allocSchemeAtomic $ SchemeCons car' cdr'
+  
 car :: SchemePrimitive
 car e = do
   c <- dereference e
@@ -154,10 +169,11 @@ cdr e = do
 
 -- | Construct a closure.
 lambda :: SchemePrimitive
-lambda p = do
-  -- a <- dereference p
-  -- verifyFormals a
-  return SchemeNil
+lambda argp = do
+  formalArguments <- car argp
+  functionBody <- cdr argp
+  (env:_) <- gets winding
+  cons formalArguments functionBody >>= cons env
   
 -- | Perform function application.
 apply :: SchemePrimitive
@@ -174,7 +190,9 @@ apply codep = do
 
 -- | Looks up a value in an association list.
 assoc :: SchemePrimitive
-assoc valp consp = do
+assoc argp = do
+  valp <- car argp
+  consp <- cdr argp
   assocPair <- car consp
   k <- car assocPair
   if valp == k
