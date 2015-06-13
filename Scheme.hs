@@ -178,7 +178,7 @@ apply argp = do
    (SchemeSymbol "lamba") -> lambda funp
    --(SchemeSymbol "define") -> define cdr'
    (SchemeSymbol _) -> do
-     -- closure <- eval carv
+     closure <- eval funp
      return SchemeNil
 
 -- | Looks up a value in an association list.
