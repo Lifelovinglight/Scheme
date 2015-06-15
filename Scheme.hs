@@ -27,7 +27,7 @@ instance Ord HeapPointer where
   compare (HeapPointer a) (HeapPointer b) = compare a b
   
 -- | The type of a char parser w/ the scheme heap as user state.
--- | Should return a pointer to the element parsed.
+  -- Should return a pointer to the element parsed.
 type SchemeParser = Parsec String Heap HeapPointer
 
 data Heap = Heap { heap :: Map HeapPointer SchemeValue,
@@ -132,7 +132,7 @@ dereference pointer = do
    (Just atom) -> return atom
    
 -- | A function with this type can be used as a scheme primitive function
--- | by apply.
+  -- by apply.
 type SchemePrimitive = HeapPointer -> SchemeMonad HeapPointer
 
 -- | Allocate a cons on the heap
@@ -177,10 +177,24 @@ apply argp = do
    (SchemeSymbol "nil") -> error "Attempted to apply NIL."
    (SchemeSymbol "lamba") -> lambda funp
    --(SchemeSymbol "define") -> define cdr'
-   (SchemeSymbol _) -> do
-     closure <- eval funp
+   otherwise -> do
+     (closure:args) <- evalList funp
+     formals <- car closure
+     closureEnvironment <- cdr closure >>= car
+     closureBody <- cdr closure >>= cdr >>= car
+     env <- gets environment
      return SchemeNil
-
+     where evalList :: HeapPointer -> SchemeMonad [HeapPointer]
+           evalList argp = do
+             e <- car argp
+             r <- eval e
+             n <- cdr argp
+             case n of
+              SchemeNil -> return []
+              otherwise -> do
+                rn <- evalList n
+                return $ r : rn
+                
 -- | Looks up a value in an association list.
 assoc :: SchemePrimitive
 assoc argp = do
