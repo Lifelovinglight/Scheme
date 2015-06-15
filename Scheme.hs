@@ -182,8 +182,10 @@ apply argp = do
      formals <- car closure
      closureEnvironment <- cdr closure >>= car
      closureBody <- cdr closure >>= cdr >>= car
-     env <- gets environment
-     return SchemeNil
+     s <- get
+     put $ s { environment = closureEnvironment }
+     bindFormals formals args
+     eval closureBody
      where evalList :: HeapPointer -> SchemeMonad [HeapPointer]
            evalList argp = do
              e <- car argp
@@ -194,6 +196,25 @@ apply argp = do
               otherwise -> do
                 rn <- evalList n
                 return $ r : rn
+           bindFormals :: HeapPointer -> [HeapPointer] -> SchemeMonad ()
+           bindFormals SchemeNil [] = return ()
+           bindFormals SchemeNil _ = error "Too many arguments to function."
+           bindFormals _ [] = error "Too few arguments to function."
+           bindFormals formalsp (arg:argpv) = do
+             argp <- car formalsp
+             primitiveDefine argp arg
+             nf <- cdr formalsp
+             bindFormals nf argpv
+
+-- | Primitive define.
+primitiveDefine :: HeapPointer -> HeapPointer -> SchemeMonad ()
+primitiveDefine symbolp valp = do
+  env <- gets environment
+  s <- get
+  nc <- primitiveCons symbolp valp
+  nenv <- primitiveCons nc env
+  put $ s { environment = nenv}
+  return ()
                 
 -- | Looks up a value in an association list.
 assoc :: SchemePrimitive
