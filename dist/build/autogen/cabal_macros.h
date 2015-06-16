@@ -28,6 +28,41 @@
   (major1) == 3 && (major2) <  1 || \
   (major1) == 3 && (major2) == 1 && (minor) <= 9)
 
+/* package HUnit-1.2.5.2 */
+#define VERSION_HUnit "1.2.5.2"
+#define MIN_VERSION_HUnit(major1,major2,minor) (\
+  (major1) <  1 || \
+  (major1) == 1 && (major2) <  2 || \
+  (major1) == 1 && (major2) == 2 && (minor) <= 5)
+
+/* package QuickCheck-2.8.1 */
+#define VERSION_QuickCheck "2.8.1"
+#define MIN_VERSION_QuickCheck(major1,major2,minor) (\
+  (major1) <  2 || \
+  (major1) == 2 && (major2) <  8 || \
+  (major1) == 2 && (major2) == 8 && (minor) <= 1)
+
+/* package test-framework-0.8.1.1 */
+#define VERSION_test_framework "0.8.1.1"
+#define MIN_VERSION_test_framework(major1,major2,minor) (\
+  (major1) <  0 || \
+  (major1) == 0 && (major2) <  8 || \
+  (major1) == 0 && (major2) == 8 && (minor) <= 1)
+
+/* package test-framework-hunit-0.3.0.1 */
+#define VERSION_test_framework_hunit "0.3.0.1"
+#define MIN_VERSION_test_framework_hunit(major1,major2,minor) (\
+  (major1) <  0 || \
+  (major1) == 0 && (major2) <  3 || \
+  (major1) == 0 && (major2) == 3 && (minor) <= 0)
+
+/* package test-framework-quickcheck2-0.3.0.3 */
+#define VERSION_test_framework_quickcheck2 "0.3.0.3"
+#define MIN_VERSION_test_framework_quickcheck2(major1,major2,minor) (\
+  (major1) <  0 || \
+  (major1) == 0 && (major2) <  3 || \
+  (major1) == 0 && (major2) == 3 && (minor) <= 0)
+
 /* tool alex-3.1.4 */
 #define TOOL_VERSION_alex "3.1.4"
 #define MIN_TOOL_VERSION_alex(major1,major2,minor) (\
