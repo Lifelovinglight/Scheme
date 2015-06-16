@@ -106,7 +106,8 @@ schemeTopLevelParser = do
   
 -- | The environment containing the runtime data.
 data SchemeEnvironment = SchemeEnvironment { runtimeHeap :: Heap,
-                                             environment :: HeapPointer }
+                                             environment :: HeapPointer,
+                                             continuation :: HeapPointer }
                        deriving (Show)
                                 
 -- | The scheme runtime state monad.
@@ -167,6 +168,15 @@ lambda argp = do
   functionBody <- cdr argp
   env <- gets environment
   primitiveCons formalArguments functionBody >>= primitiveCons env
+
+-- | Evaluate a list of statements and return the result of the last one.
+begin :: SchemePrimitive
+begin argp = do
+  r <- car argp >>= eval
+  n <- cdr argp
+  case n of
+   SchemeNil -> return r
+   otherwise -> begin n
   
 -- | Perform function application.
 apply :: SchemePrimitive
@@ -183,9 +193,11 @@ apply argp = do
      closureEnvironment <- cdr closure >>= car
      closureBody <- cdr closure >>= cdr >>= car
      s <- get
-     put $ s { environment = closureEnvironment }
+     env <- gets environment
+     put $ s { environment = closureEnvironment,
+               continuation = env }
      bindFormals formals args
-     eval closureBody
+     begin closureBody
      where evalList :: HeapPointer -> SchemeMonad [HeapPointer]
            evalList argp = do
              e <- car argp
