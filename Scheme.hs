@@ -153,8 +153,8 @@ car e = do
   case c of
    (SchemeCons p _) -> return p
    otherwise -> do
-   heap <- gets runtimeHeap
-   error $ "Car applied to non-cons: " ++ (show c) ++ "\n" ++ show heap
+     heap <- gets runtimeHeap
+     error $ "Car applied to non-cons: " ++ (show c) ++ "\n" ++ show heap
    
 cdr :: SchemePrimitive
 cdr e = do

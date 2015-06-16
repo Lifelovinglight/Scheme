@@ -48,7 +48,7 @@ cabal-version:       >=1.10
 test-suite test-scheme
   type: exitcode-stdio-1.0
   main-is: TestScheme.hs
-  build-depends: base, test-framework, test-framework-hunit, test-framework-quickcheck2, HUnit, QuickCheck
+  build-depends: base, mtl, containers, test-framework, test-framework-hunit, test-framework-quickcheck2, HUnit, QuickCheck, Scheme
   hs-source-dirs: tests
 
                      
