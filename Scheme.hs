@@ -197,7 +197,11 @@ apply argp = do
      put $ s { environment = closureEnvironment,
                continuation = env }
      bindFormals formals args
-     begin closureBody
+     r <- begin closureBody
+     s <- get
+     envn <- gets continuation
+     put $ s { environment = envn }
+     return r
      where evalList :: HeapPointer -> SchemeMonad [HeapPointer]
            evalList argp = do
              e <- car argp
@@ -271,3 +275,7 @@ read' str = do
      put $ s { runtimeHeap = newHeap }
      return e
    (Left e) -> error $ "Parser error: " ++ (show e)
+ 
+example str = do
+  let (Right (heap, heapPointer)) = runParser schemeTopLevelParser (Heap (fromList []) (HeapPointer 0)) "" str
+  runState (eval heapPointer) $ SchemeEnvironment heap SchemeNil SchemeNil
