@@ -152,7 +152,9 @@ car e = do
   c <- dereference e
   case c of
    (SchemeCons p _) -> return p
-   otherwise -> error $ "Car applied to non-cons: " ++ (show c)
+   otherwise -> do
+   heap <- gets runtimeHeap
+   error $ "Car applied to non-cons: " ++ (show c) ++ "\n" ++ show heap
    
 cdr :: SchemePrimitive
 cdr e = do
@@ -277,5 +279,6 @@ read' str = do
    (Left e) -> error $ "Parser error: " ++ (show e)
  
 example str = do
-  let (Right (heap, heapPointer)) = runParser schemeTopLevelParser (Heap (fromList []) (HeapPointer 0)) "" str
+  let pointer = HeapPointer 0
+      (Right (heap, heapPointer)) = runParser schemeTopLevelParser (Heap (fromList []) (HeapPointer 0)) "" str
   runState (eval heapPointer) $ SchemeEnvironment heap SchemeNil SchemeNil
