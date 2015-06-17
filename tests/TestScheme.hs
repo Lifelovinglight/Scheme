@@ -55,5 +55,18 @@ testPrimitiveCons = do
                                      (HeapPointer 0)
                                      (HeapPointer 1))]
 
--- testAssoc :: Assertion
--- testAssoc = do
+testAssoc :: Assertion
+testAssoc = do
+  let (r, (SchemeEnvironment (Heap heap index) env cont)) =
+        runState (assoc (HeapPointer 3) >>= dereference) $
+        SchemeEnvironment
+        (Heap (fromList [(HeapPointer 0, SchemeInteger 1),
+                         (HeapPointer 1, SchemeInteger 2),
+                         (HeapPointer 2, SchemeCons
+                                         (HeapPointer 0)
+                                         (HeapPointer 1)),
+                         (HeapPointer 3, SchemeCons
+                                         (HeapPointer 2)
+                                         SchemeNil)])
+         (HeapPointer 4)) SchemeNil SchemeNil
+  r @?= SchemeInteger 2
