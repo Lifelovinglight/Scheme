@@ -1,3 +1,4 @@
+-- | Test suite for Scheme module.
 module Main where
 
 import Scheme
@@ -14,9 +15,11 @@ main :: IO ()
 main = defaultMainWithOpts
        [ testCase "car" testCar,
          testCase "cdr" testCdr,
-         testCase "primitiveCons" testPrimitiveCons
+         testCase "primitiveCons" testPrimitiveCons,
+         testCase "assoc" testAssoc
        ] mempty
 
+-- | Test for car.
 testCar :: Assertion
 testCar = do
   let (r, env) = runState (car (HeapPointer 1) >>= dereference) $
@@ -27,7 +30,8 @@ testCar = do
                                                   SchemeNil)])
                   (HeapPointer 2)) SchemeNil SchemeNil
   r @?= SchemeInteger 1
-  
+
+-- | Test for cdr.
 testCdr :: Assertion
 testCdr = do
   let (r, env) = runState (cdr (HeapPointer 1) >>= dereference) $
@@ -38,7 +42,8 @@ testCdr = do
                                                   (HeapPointer 0))])
                   (HeapPointer 2)) SchemeNil SchemeNil
   r @?= SchemeInteger 1
-  
+
+-- | Test for primitive cons.
 testPrimitiveCons :: Assertion
 testPrimitiveCons = do
   let (r, (SchemeEnvironment (Heap heap index) env cont)) =
@@ -55,10 +60,11 @@ testPrimitiveCons = do
                                      (HeapPointer 0)
                                      (HeapPointer 1))]
 
+-- | Test for assoc.
 testAssoc :: Assertion
 testAssoc = do
   let (r, (SchemeEnvironment (Heap heap index) env cont)) =
-        runState (assoc (HeapPointer 3) >>= dereference) $
+        runState (assoc (HeapPointer 5) >>= dereference) $
         SchemeEnvironment
         (Heap (fromList [(HeapPointer 0, SchemeInteger 1),
                          (HeapPointer 1, SchemeInteger 2),
@@ -67,6 +73,13 @@ testAssoc = do
                                          (HeapPointer 1)),
                          (HeapPointer 3, SchemeCons
                                          (HeapPointer 2)
+                                         SchemeNil),
+                         (HeapPointer 4, SchemeInteger 1),
+                         (HeapPointer 5, SchemeCons
+                                         (HeapPointer 4)
+                                         (HeapPointer 6)),
+                         (HeapPointer 6, SchemeCons
+                                         (HeapPointer 3)
                                          SchemeNil)])
-         (HeapPointer 4)) SchemeNil SchemeNil
+         (HeapPointer 7)) SchemeNil SchemeNil
   r @?= SchemeInteger 2
