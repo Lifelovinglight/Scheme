@@ -228,11 +228,18 @@ apply argp = do
 primitiveDefine :: HeapPointer -> HeapPointer -> SchemeMonad ()
 primitiveDefine symbolp valp = do
   env <- gets environment
-  s <- get
   nc <- primitiveCons symbolp valp
   nenv <- primitiveCons nc env
+  s <- get
   put $ s { environment = nenv}
   return ()
+
+-- | Define.
+define :: SchemePrimitive
+define argp = do
+  [symbolp, valp] <- builtinGetArgs 2 argp
+  primitiveDefine symbolp valp
+  return SchemeNil
     
 -- | Looks up a value in an association list.
 assoc :: SchemePrimitive
@@ -244,7 +251,9 @@ assoc argp = do
           valp <- car vlp
           consp <- cdr vlp
           k <- car valp
-          if kp == k
+          kpv <- dereference kp
+          kv <- dereference k
+          if kpv == kv
             then cdr valp
             else do
             if consp == SchemeNil
@@ -255,15 +264,14 @@ resolve :: SchemePrimitive
 resolve argp = do
   env <- gets environment
   res <- assoc env
-  val <- dereference res
   case res of
    SchemeNil -> error $ "Unbound symbol: " ++ (show res)
    otherwise -> return res
 
 builtinGetArgs :: Integer -> HeapPointer -> SchemeMonad [HeapPointer]
-bultinGetArgs 0 SchemeNil = return []
-builtinGetArgs 0 _ = error "Too many arguments to function."
-builtinGetArgs _ SchemeNil = error "Too few arguments to function."
+builtinGetArgs 0 SchemeNil = return []
+builtinGetArgs 0 p = error $ "Too many arguments to function." ++ (show p)
+builtinGetArgs n SchemeNil = error $ "Too few arguments to function. " ++ (show n)
 builtinGetArgs num argp = do
   arg <- car argp
   nxt <- cdr argp

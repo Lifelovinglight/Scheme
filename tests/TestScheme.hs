@@ -16,7 +16,8 @@ main = defaultMainWithOpts
        [ testCase "car" testCar,
          testCase "cdr" testCdr,
          testCase "primitiveCons" testPrimitiveCons,
-         testCase "assoc" testAssoc
+         testCase "assoc" testAssoc,
+         testCase "define" testDefine
        ] mempty
 
 -- | Test for car.
@@ -83,3 +84,42 @@ testAssoc = do
                                          SchemeNil)])
          (HeapPointer 7)) SchemeNil SchemeNil
   r @?= SchemeInteger 2
+
+-- | Test for define.
+testDefine :: Assertion
+testDefine = do
+  let (r, (SchemeEnvironment (Heap heap index) env cont)) =
+        runState (define (HeapPointer 2)) $
+        SchemeEnvironment
+        (Heap (fromList [(HeapPointer 0, SchemeSymbol "hello"),
+                         (HeapPointer 1, SchemeInteger 2),
+                         (HeapPointer 2, SchemeCons
+                                         (HeapPointer 0)
+                                         (HeapPointer 3)),
+                         (HeapPointer 3, SchemeCons
+                                         (HeapPointer 1)
+                                         SchemeNil),
+                         (HeapPointer 4, SchemeCons
+                                         SchemeNil
+                                         SchemeNil)])
+         (HeapPointer 5)) (HeapPointer 4) SchemeNil
+  r @?= SchemeNil
+  index @?= HeapPointer 7
+  env @?= HeapPointer 6
+  (toList heap) @?= [(HeapPointer 0, SchemeSymbol "hello"),
+                         (HeapPointer 1, SchemeInteger 2),
+                         (HeapPointer 2, SchemeCons
+                                         (HeapPointer 0)
+                                         (HeapPointer 3)),
+                         (HeapPointer 3, SchemeCons
+                                         (HeapPointer 1)
+                                         SchemeNil),
+                         (HeapPointer 4, SchemeCons
+                                         SchemeNil
+                                         SchemeNil),
+                         (HeapPointer 5, SchemeCons
+                                         (HeapPointer 0)
+                                         (HeapPointer 1)),
+                         (HeapPointer 6, SchemeCons
+                                         (HeapPointer 5)
+                                         (HeapPointer 4))]
